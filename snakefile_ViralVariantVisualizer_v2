@@ -66,9 +66,9 @@ PYTHON_SCRIPTS = "SCRIPTS_PYTHON/"
 R_SCRIPTS = "SCRIPTS_R/"
 REPORT = "REPORTS/"
 CONDA_PATH = PATH + "ENVS/"
-VDB_PATH = "/home/aflageul/vdb/megablast_index/vdb.fasta"
-VDB_IDS = "/home/aflageul/vdb/megablast_index/vdb_ids"
-GB_PATH = "/home/aflageul/vdb/viral_gbk_files/"
+VDB_PATH = PATH + "vdb/megablast_index/vdb.fasta"
+VDB_IDS = PATH + "vdb/megablast_index/vdb_ids"
+GB_PATH = PATH + "vdb/viral_gbk_files/"
 
 # locate the configuration file for the succes of this workflow
 configfile : PATH + "configuration_file.json"
