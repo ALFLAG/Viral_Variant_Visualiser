@@ -4,7 +4,7 @@ from single-ends or paired-end NGS data, it allows the recontruction of the most
 
 This tool can be lauch in two ways:  
     command line: ```python3 vvv_directory/SCRIPTS_PYTHON/launch_VVV_v2.py``` # with all the requiered argument, see the help section  
-    via galaxy: ```viral_variant_visualiser.xml``` file can be added to galaxy together with the ```SCRIPTS_PYTHON/launch_VVV_v2.py``` script  
+    via galaxy: ```viral_variant_visualiser.xml``` file can be added to galaxy together with the ```SCRIPTS_PYTHON/launch_VVV_v2.py``` script. In this case, make sure you update the command section of the xml file, with the correct path to the script, and the correct path to ```vvv_directory/```
 
 After cloning this tool, modify the PATH variable in the ```vvv_directory/snakefile_viral_variant_visualiser``` into the path were vvv_directory was placed.  
 This tool requieres snakemake 5.10 installed in a conda environment named 'snakes_update' that can be found in the ```ENVS/``` directory.  
