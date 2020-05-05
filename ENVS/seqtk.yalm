@@ -1,0 +1,12 @@
+name: seqtk
+channels:
+  - bioconda
+  - r
+  - defaults
+  - conda-forge
+dependencies:
+  - seqtk=1.3=ha92aebf_0
+  - libgcc-ng=7.2.0=hdf63c60_3
+  - zlib=1.2.11=ha838bed_2
+prefix: /home/aflageul/miniconda3/envs/seqtk
+

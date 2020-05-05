@@ -1,0 +1,11 @@
+name: varscan
+channels:
+  - bioconda
+  - r
+  - defaults
+  - conda-forge
+dependencies:
+  - varscan=2.4.3=1
+  - openjdk=8.0.121=1
+prefix: /home/aflageul/miniconda3/envs/varscan
+

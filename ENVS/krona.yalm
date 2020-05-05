@@ -1,0 +1,12 @@
+name: krona
+channels:
+  - bioconda
+  - r
+  - defaults
+  - conda-forge
+dependencies:
+  - krona=2.7=pl526_3
+  - libgcc-ng=8.2.0=hdf63c60_1
+  - perl=5.26.2=h14c3975_0
+prefix: /home/aflageul/miniconda3/envs/krona
+

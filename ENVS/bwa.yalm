@@ -1,0 +1,13 @@
+name: bwa
+channels:
+  - bioconda
+  - r
+  - defaults
+  - conda-forge
+dependencies:
+  - bwa=0.7.17=ha92aebf_3
+  - libgcc-ng=7.2.0=hdf63c60_3
+  - perl=5.26.2=h14c3975_0
+  - zlib=1.2.11=ha838bed_2
+prefix: /home/aflageul/miniconda3/envs/bwa
+

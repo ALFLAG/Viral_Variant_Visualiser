@@ -1,0 +1,114 @@
+<?xml version="1.0" ?> <!-- encoding="UTF-8" standalone="yes" ?-->
+
+
+<!--
+    By default, the nt database is used to determine the metagenomique composition of the sample and to remove chimerique reads.
+    To modify this database, uncomment the corresponding line at the end of this file, and adjust the command line.
+    NB: a Megablast index is used by VVV, based on VRL files from Genbank. If you want to modify this db, then modify the snakefile.
+
+-->
+
+<tool id="variant_vvv" name="Viral Variant Visualizer - VVV" version="1.0.0" workflow_compatible="false">
+    <description>
+
+        Determine the composition of the viral population.
+
+    </description>
+    <command><![CDATA[
+        python3 $__tool_directory__/viral_variant_visualiser.py
+        -s '$sample' --mail '$mail' --db nt --remove_duplicate '$remove_duplicate.value' --threshold '$threshold' --project '$project' 
+        #if '$data.datatype.data' == "se":
+            -i '$data.fastq' 
+        #else
+            -i '$data.fastq1','$data.fastq2' 
+        #end if
+        #if $consensus.generate_consensus == "yes"
+            --generate_consensus yes 
+        #else
+            --generate_consensus no --consensus_file '${consensus.consensus_file}' 
+        #end if
+
+        && cd /home/aflageul/GAKA/ME/ANALYSIS/'$project'/'$sample'/ && mv Results/ '$sample'_results
+        && tar -zcvf archive.tar.gz '$sample'_results/
+        &&
+        #if $consensus.generate_consensus == 'yes':
+            mv archive.tar.gz $out_archive1
+        #else: 
+            mv archive.tar.gz $out_archive2
+        #end if
+
+    ]]></command>
+    <inputs>
+
+        <param name="sample" type="text" label="Enter sample name" help="">
+            <validator type="expression" message="Underscore '_' character is forbidden.">'_' not in value</validator>
+            <validator type="empty_field" message="This field must be completed"/>
+        </param>
+
+        <conditional name="data">
+            <param name="datatype" type="select" label="What kind of data do you have? Single-end / Paired-end" help="">
+                <option value="se" > Single-End </option>
+                <option value="pe" > Paired-End </option>
+            </param>
+            <when value="se">
+                <param name="fastq" type="data" format="fastq.gz" label="Select your NGS fastq file"/>
+            </when>
+            <when value="pe">
+                <param name="fastq1" type="data" format="fastq.gz" label="Select your NGS fastq file1"/>
+                <param name="fastq2" type="data" format="fastq.gz" label="Select your NGS fastq file2"/>
+            </when>
+        </conditional> 
+
+        <conditional name="consensus">
+            <param name="generate_consensus" type="select" multiple="false" label="Do you want to generate consensus sequence ?" help="">
+                <option value="yes"> Yes </option>
+                <option value="no" > No </option>
+            </param>
+            <when value="no">
+                <param name="consensus_file" type="data" format="fasta" label="The genome used for comparison"/>
+            </when>
+        </conditional>
+
+        <param name="threshold" type="float" value="0.07" label="Enter frequency threshold [default 0.07]" help="">
+            <validator type="empty_field" message="This field must be completed"/>
+        </param>
+
+        <param name="remove_duplicate" type="select" multiple="false" label="Do you want to remove duplicate reads for the variant calling step?" help="">
+            <option value="no" selected="true"> No  </option>
+            <option value="yes"               > Yes </option>
+        </param>
+
+        <param name="mail" type="text" label="Your email address" help="">
+            <validator type="empty_field" message="This field must be completed"/>
+        </param>
+
+        <param name="project" type="text" label="Enter NGS project code" help="">
+            <validator type="empty_field" message="This field must be completed"/>
+        </param>
+
+<!--        <param name="db" type="text" label="Which database to use?" help="">
+            <validator type="empty_field" message="This field must be completed"/>
+        </param> -->
+
+    </inputs>
+    <outputs>
+        <data name="out_archive1" type="data" format="tar.gz" label="VVV-${sample}_with_consensus_generation.tar.gz">
+            <filter> (consensus['generate_consensus'] == 'yes')</filter>
+        </data>
+        <data name="out_archive2" type="data" format="tar.gz" label="VVV-${sample}_aligned_on_${consensus.consensus_file}.tar.gz">
+            <filter> (consensus['generate_consensus'] == 'no')</filter>
+        </data>
+    </outputs>
+
+    <!--<citations>
+        <citation type="doi">INSERT_HERE_DOI_NUMBER </citation>  format : 10.1093/bioinformatics/bts611
+    </citations> -->
+
+    <help>
+    If you use this tool, please cite:
+    A. Flageul, P. Lucas, E. Hirchaud, F. Touzain, Y. Blanchard, N. Eterradossi, P. Brown and B. Grasland
+    Viral Variant Visualizer (V3): A novel bioinformatic tool for rapid and simple visualization of viral genetic diversity
+    Virus Research ...
+
+    </help>
+</tool>

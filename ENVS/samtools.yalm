@@ -1,0 +1,24 @@
+name: samtools
+channels:
+  - bioconda
+  - r
+  - defaults
+  - conda-forge
+dependencies:
+  - htslib=1.9=hc238db4_4
+  - libdeflate=1.0=h470a237_0
+  - samtools=1.9=h8ee4bcc_1
+  - bzip2=1.0.6=h14c3975_5
+  - ca-certificates=2018.03.07=0
+  - curl=7.61.0=h84994c4_0
+  - libcurl=7.61.0=h1ad7b7a_0
+  - libgcc=7.2.0=h69d50b8_2
+  - libgcc-ng=7.2.0=hdf63c60_3
+  - libssh2=1.8.0=h9cfc8f7_4
+  - libstdcxx-ng=8.2.0=hdf63c60_0
+  - ncurses=6.1=hf484d3e_0
+  - openssl=1.0.2p=h14c3975_0
+  - xz=5.2.4=h14c3975_4
+  - zlib=1.2.11=ha838bed_2
+prefix: /home/aflageul/miniconda3/envs/samtools
+

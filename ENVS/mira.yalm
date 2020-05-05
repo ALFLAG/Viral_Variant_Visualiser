@@ -1,0 +1,10 @@
+name: mira
+channels:
+  - bioconda
+  - r
+  - defaults
+  - conda-forge
+dependencies:
+  - mira=4.9.6=1
+prefix: /home/aflageul/miniconda3/envs/mira
+

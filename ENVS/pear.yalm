@@ -1,0 +1,14 @@
+name: pear
+channels:
+  - hivmmer
+  - bioconda
+  - r
+  - defaults
+  - conda-forge
+dependencies:
+  - libgcc-ng=8.2.0=hdf63c60_1
+  - zlib=1.2.11=h7b6447c_3
+  - bzip2=1.0.6=h14c3975_0
+  - pear=0.9.11=h14c3975_0
+prefix: /home/aflageul/miniconda3/envs/pear
+

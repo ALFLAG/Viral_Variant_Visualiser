@@ -1,0 +1,11 @@
+name: muscle
+channels:
+  - bioconda
+  - r
+  - defaults
+  - conda-forge
+dependencies:
+  - muscle=3.8.1551=h2d50403_3
+  - libstdcxx-ng=8.2.0=hdf63c60_1
+prefix: /home/aflageul/miniconda3/envs/muscle
+

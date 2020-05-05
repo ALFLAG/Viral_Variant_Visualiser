@@ -1,0 +1,1249 @@
+#! usr/bin/env/ python3
+# -*- coding: utf-8 -*-
+#
+# Alexandre Flageul
+# Name: snakefile_snp_consensus
+# Version: 1.0.0
+# last modification: February 17th 2018
+# status: over
+#
+#
+# Description : The present file is a workflow designed to analyze raw data
+#               from high-throughput sequencing technology. It has been written
+#               in order to be used with SNAKEMAKE. The program will
+#               generate a consensus viral genome and will analyze the
+#               composition of the viral population inside the sample by
+#               determining the nucleotidic composition of the viral genome at
+#               each position.
+#
+#               At the end, the program will represent graphically the viral
+#               genome, with a specific coloration according to the different
+#               parts of the viral genome. The position of nucleotide variation
+#               is added to the graph.
+#
+#               This workflow is using different bioinformatic tools, including
+#               multiples in-house Python3 and R scripts.
+#               It is important to note that the present program is using
+#               Genbank file (.gb) and may not work properly if the genbank file
+#               has been written differently (see the following python script :
+#               'extract_gene_position_from_gb_file.py' to modify regular
+#               expression if necessary).
+#
+#               All tools used in this workflow have been installed using Conda.
+#               Each tool is stored in a specific environment, so that to use
+#               them it is necessary to activate the different environments.
+#               The present Snakefile is destined to be used by anyone, using a
+#               gaphical interface after the PhD student has left the agency.
+#
+# How to use it:
+#               The present snakefile can be launched manually or automatically
+#               (recommanded) by using the 'launch_Me.py' script.
+#               Manually, you will have to fill in the configuration file but
+#               beware to not miswrite it, and you will need to activate the
+#               'snakes' environment first.
+#               From it, all others environments are activated. Therefore,
+#               Snakemake can be used in all activated environments, provided
+#               that the snakes environment has been activated first.
+#
+################################################################################
+
+# ~ start of snakefile ~
+
+#############
+## Modules ##
+#############
+
+import os
+
+#################
+## Main Script ##
+#################
+
+# set the path definition
+PATH = "/home/aflageul/GALAXY/ME/"
+ANALYSIS = "ANALYSIS/"
+PYTHON_SCRIPTS = "SCRIPTS_PYTHON/"
+R_SCRIPTS = "SCRIPTS_R/"
+REPORT = "REPORTS/"
+CONDA_PATH = PATH + "ENVS/"
+VDB_PATH = "/home/aflageul/vdb/megablast_index/vdb.fasta"
+VDB_IDS = "/home/aflageul/vdb/megablast_index/vdb_ids"
+GB_PATH = "/home/aflageul/vdb/viral_gbk_files/"
+
+# locate the configuration file for the succes of this workflow
+configfile : PATH + "configuration_file.json"
+
+# extract data from the configuration file
+PROJECT = config["PROJECT_CODE"]+"/"
+
+# remove duplicate PCR ?
+if config["DUPLICATES"] == "yes": remove_duplicates = True
+elif config["DUPLICATES"] == "no": remove_duplicates = False
+
+# set the threshold value for the detection of viral genetic variants.
+threshold = config["THRESHOLD"]
+
+# set the database for metagenomique analysis
+metaDB = config["DATABASE"]
+
+# define the type of data
+data = config["DATA"].upper()
+if config["DATA"].upper() == "PE":
+    pair_end = True
+    single_end = False
+    technology = "solexa"
+    vardict_option = "1"
+elif config["DATA"].upper() == "SE":
+    single_end = True
+    pair_end = False
+    technology = "iontor"
+    vardict_option = "0"
+
+# contract the path for more readable lines
+GENERAL_PATH = PATH + ANALYSIS + PROJECT
+
+# define number of threads
+thrds = 12
+
+
+# All directories are automatically created, using the python OS module
+# Raw data are automatically transfered from the 'raw_data' directory to the two
+# new locations (with and without host read removal step) and renamed as
+# raw_reads.fastq.gz
+# Why do the raw data place in two directories and not place them in a parent
+# directory so both analysis can be performed easily ?
+        # because I choose to place the raw_data inside the Results directory,
+        # in order to save all important data in the same directory.
+        # Therefore, the transfert of the Results is easier and analisys can be
+        # performed multiple times.
+
+ech_list = config["Echantillons"]
+raw_reads = config["READ_FILE"]
+
+for i in range(0, len(ech_list)):
+    samp = ech_list[i]
+    os.system("mkdir -p " + GENERAL_PATH + samp + "/result_get_org/krona/")
+    os.system("mkdir -p " + GENERAL_PATH + samp + "/partial_read_files/")
+    os.system("mkdir -p " + GENERAL_PATH + samp + "/ContigSpades/")
+    os.system("mkdir -p " + GENERAL_PATH + samp + "/ContigMira/")
+    os.system("mkdir -p " + GENERAL_PATH + samp + "/mutant_swarm_composition/")
+    os.system("mkdir -p " + GENERAL_PATH + samp + "/Results/for_IGV/")
+
+    if pair_end == True:
+        path1 = GENERAL_PATH + samp + "/Results/" + samp + "_raw_reads1.fastq.gz"
+        path2 = GENERAL_PATH + samp + "/Results/" + samp + "_raw_reads2.fastq.gz"
+
+        if os.path.exists(path1): pass                                                                 
+        else:                                                                    
+            os.system("mv " + raw_reads[i][0] + " " + path1)                     
+            os.system("mv " + raw_reads[i][1] + " " + path2)                     
+
+    elif single_end == True:                                                     
+        path3 = GENERAL_PATH + samp + "/Results/" + samp + "_raw_reads.fastq.gz"
+        
+        if os.path.exists(path3): pass                                                                 
+        else: os.system("mv " + raw_reads[i] + " " + path3)                        
+        
+
+################
+##### Goal #####
+################
+
+# define final files that are necessary to succesfully accomplish the workflow.
+
+if config["GENERATE_CONSENSUS"] == "yes":
+    generate_consensus = True
+    rule target:
+        input:
+            krona_chart      = expand(GENERAL_PATH + "{ech}/Results/{ech}_krona_chart.html",                             ech = ech_list),
+            vcf              = expand(GENERAL_PATH + "{ech}/Results/{ech}_variant_calling.vcf",                          ech = ech_list),
+            viral_variants   = expand(GENERAL_PATH + "{ech}/Results/{ech}_graphic_variant.png",                          ech = ech_list),
+            consensus_fa     = expand(GENERAL_PATH + "{ech}/Results/{ech}_viral_consensus.fasta",                        ech = ech_list),
+            cov_consensus    = expand(GENERAL_PATH + "{ech}/Results/{ech}_coverage_viral_reads_on_consensus.png",        ech = ech_list),
+            coverage_ref     = expand(GENERAL_PATH + "{ech}/Results/{ech}_coverage_reads_on_best_viralref.png",          ech = ech_list),
+            sorted_mira      = expand(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_mira_on_viralref.sorted.bam",          ech = ech_list),
+            sorted_spades    = expand(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_spades_on_viralref.sorted.bam",        ech = ech_list),
+            sorted_consensus = expand(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_consensus_on_viralref.sorted.bam",     ech = ech_list),
+            index_mira       = expand(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_mira_on_viralref.sorted.bam.bai",      ech = ech_list),
+            index_spades     = expand(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_spades_on_viralref.sorted.bam.bai",    ech = ech_list),
+            index_consensus  = expand(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_consensus_on_viralref.sorted.bam.bai", ech = ech_list)
+
+elif config["GENERATE_CONSENSUS"] == "no":
+    generate_consensus = False
+    rule target:
+        input:
+            krona_chart    = expand(GENERAL_PATH + "{ech}/Results/{ech}_krona_chart.html",                      ech = ech_list),
+            viral_variants = expand(GENERAL_PATH + "{ech}/Results/{ech}_graphic_variant.png",                   ech = ech_list),
+            vcf            = expand(GENERAL_PATH + "{ech}/Results/{ech}_variant_calling.vcf",                   ech = ech_list),
+            cov_consensus  = expand(GENERAL_PATH + "{ech}/Results/{ech}_coverage_viral_reads_on_consensus.png", ech = ech_list)
+ 
+################################################################################
+######################## First Step - Read Cleanning ###########################
+################################################################################
+
+# The cleaning step is the first step of the process.
+# It is performed using Trimmomatic.
+# The tool removes barcode and adapters AND removes also part of the read that
+# are poor quality. Here, the minimum quality has been set to 3, and bases with
+# 5' LEADING or 3' TRAILING quality below 3 will be cut.
+# Moreover, all reads with length below 36 will be removed.
+# For more details, see the trimmomatic manual.
+
+if pair_end == True:                                                            
+    rule clean_paired_reads:                                                    
+        input:                                                                  
+            read1   = GENERAL_PATH + "{ech}/Results/{ech}_raw_reads1.fastq.gz",
+            read2   = GENERAL_PATH + "{ech}/Results/{ech}_raw_reads2.fastq.gz",
+            to_clip = PATH + "oligo_index_IonTorrent/all_known_iontorrent_including_sigmaWTA2kit.fw_revcomp.fasta"
+        output:
+            paired1   = GENERAL_PATH + "{ech}/paired1_clean_read.fastq",
+            paired2   = GENERAL_PATH + "{ech}/paired2_clean_read.fastq",
+            unpaired1 = GENERAL_PATH + "{ech}/unpaired1_clean_read.fastq",
+            unpaired2 = GENERAL_PATH + "{ech}/unpaired2_clean_read.fastq"
+        conda:
+            CONDA_PATH + "trim.yalm"
+        threads: thrds
+        shell:
+            "trimmomatic PE -threads {threads} {input.read1} {input.read2} {output.paired1} {output.unpaired1} {output.paired2} {output.unpaired2} ILLUMINACLIP:{input.to_clip}:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36"
+
+# the --keep-original argument:
+# Do not reverse and complement the reverse reads when writing
+# the unassembled and discarded reads output.
+    rule merge_paired1_and_paired2_from_trim_using_pear:
+        input: 
+            read1 = GENERAL_PATH + "{ech}/paired1_clean_read.fastq",
+            read2 = GENERAL_PATH + "{ech}/paired2_clean_read.fastq",
+        output:
+            GENERAL_PATH + "{ech}/pear_clean_reads"
+        conda:
+            CONDA_PATH + "pear.yalm"
+        threads: thrds
+        shell:
+            "touch {output} && "\
+            "pear --keep-original --threads {threads} -f {input.read1} -r {input.read2} -o {output}"
+
+
+# all the files will be merged in the next rule.
+# because gzip command line add automatically the .gz extension at the end of
+# the file name, it is necessary to add the last command line 'touch'.
+# Therefore we're tricking snakemake by telling it it's the last line that
+# create the last output file, even if it is not true.
+# whitout the last line, snakemake will not understand how is created the
+# .gz file
+    rule merge_everything:
+        input:
+            trim1 = GENERAL_PATH + "{ech}/unpaired1_clean_read.fastq",
+            trim2 = GENERAL_PATH + "{ech}/unpaired2_clean_read.fastq",
+            pear  = GENERAL_PATH + "{ech}/pear_clean_reads"
+        output:
+            GENERAL_PATH + "{ech}/clean_reads.fastq"
+        shell:
+            "cat {input.trim1} >> {output} && "\
+            "cat {input.trim2} >> {output} && "\
+            "cat {input.pear}.assembled.fastq >> {output} && "\
+            "cat {input.pear}.discarded.fastq >> {output} && "\
+            "cat {input.pear}.unassembled.forward.fastq >> {output} && "\
+            "cat {input.pear}.unassembled.reverse.fastq >> {output}"
+
+
+if single_end == True:   
+    rule clean_reads:
+        input:
+            GENERAL_PATH + "{ech}/Results/{ech}_raw_reads.fastq.gz",
+            PATH + "oligo_index_IonTorrent/all_known_iontorrent_including_sigmaWTA2kit.fw_revcomp.fasta"
+        output:    
+            GENERAL_PATH + "{ech}/clean_reads.fastq"
+        conda:
+            CONDA_PATH + "trim.yalm"
+        threads: thrds
+        shell:
+            "trimmomatic SE -threads {threads} {input[0]} {output} ILLUMINACLIP:{input[1]}:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36"
+
+
+################################################################################
+######### Second Step - Get the metagenomic composition of the sample ##########
+################################################################################
+
+rule sub_sample0:
+        input:
+            GENERAL_PATH + "{ech}/clean_reads.fastq",
+        output:
+            GENERAL_PATH + "{ech}/subsample0_cleaned.fastq"
+        conda:
+            CONDA_PATH + "seqtk.yalm"
+        shell:
+            "seqtk sample {input} 100000 > {output}"
+
+# The Fabrice get_org script is maybe replacable by a published tool CENTRIFUGE
+# I have to see if this tools is able to do what Fabrice script does
+# the next rule is homemade script written by Fabrice Touzain
+# it takes one read file and align all the reads against the wanted database
+# using a wanted alignment algorythm (here megablast algorythm and nt database
+# have been chosen).
+# The program generate different output files with the AN and TAXID of the
+# different references matching the reads.
+rule get_org1:
+    input:
+        subsample = GENERAL_PATH +"{ech}/subsample0_cleaned.fastq",
+        script = "/results/anses/scripts/NGS_get_organisms_of_main_blast_matchs.pl"
+    output:
+        GENERAL_PATH + "{ech}/result_get_org/first_getorg.all.fa",
+        GENERAL_PATH + "{ech}/result_get_org/first_getorg.all.fastq",
+        GENERAL_PATH + "{ech}/result_get_org/first_getorg.megablast.species.txt",
+        GENERAL_PATH + "{ech}/result_get_org/first_getorg.megablast.txt"
+    conda:
+        CONDA_PATH + "megablast.yalm"
+    threads: thrds
+    shell:
+    # the sequencer option is for bowtie2 only: Illumina by default
+    # every other strings are supposed to be illumina,
+    # only tstrings present in the list are recognized, see man page
+        "/usr/bin/perl {input.script} -nb_threads {threads} -db_str "+metaDB+ " " \
+        "-reads_f {input.subsample} -id first_getorg "\
+        "-res_dir " + GENERAL_PATH + "{wildcards.ech}/result_get_org/ "\
+        "-method megablast -sequencer ion-torrent"
+
+
+# the two next rules allow the determination of the sample composition with
+# krona and relocate the krona output file in the Results/ folder
+rule get_krona_chart:
+    input:
+        GENERAL_PATH + "{ech}/result_get_org/first_getorg.megablast.txt"
+    output:
+        GENERAL_PATH + "{ech}/result_get_org/krona/chart.html"
+    conda:
+        CONDA_PATH + "krona.yalm"
+    shell:
+        "ktImportBLAST -o {output} {input}"
+
+rule relocate_krona_chart:
+    input:
+        GENERAL_PATH + "{ech}/result_get_org/krona/chart.html"
+    output:
+        GENERAL_PATH + "{ech}/Results/{ech}_krona_chart.html"
+    shell:
+        "mv {input} {output}"
+
+
+################################################################################                   
+############################## Generate Consensus ##############################
+################################################################################
+
+if generate_consensus == True:
+    rule turn fastq_to_fasta:
+        input:
+            GENERAL_PATH + "{ech}/clean_reads.fastq"
+        output:
+            temp(GENERAL_PATH + "{ech}/clean_reads.fasta")
+        conda:
+            CONDA_PATH + "seqtk.yalm"
+        shell:
+            "seqtk seq -A {input} > {output}"
+    
+    # this step is necessary in order to be faster,
+    # if using complete file, this will be much more time consumming, even with threads
+    rule split_fasta_read_file:
+        input:
+            GENERAL_PATH + "{ech}/clean_reads.fasta"
+        output:
+            GENERAL_PATH + "{ech}/partial_read_files/.read.decoy"
+        shell:
+            "split -d -l 1000000 {input} "+ GENERAL_PATH + "{wildcards.ech}/partial_read_files/partial_read.fasta. && "\
+            "touch {output}"
+    
+    rule blast_reads_on_vdb:
+        input:
+            decoy = GENERAL_PATH + "{ech}/partial_read_files/.read.decoy",
+            db = VDB_PATH
+        output:
+            GENERAL_PATH + "{ech}/partial_read_files/.result_read_on_vdb.decoy"
+        conda:
+            CONDA_PATH + "megablast.yalm"
+        threads:
+            threads = thrds
+        shell:
+            "s=`ls " + GENERAL_PATH + "{wildcards.ech}/partial_read_files/partial_read.fasta.*` && "\
+            "for i in $s; do a=`echo $i | cut -f 3 --delimiter='.'`; blastn -task megablast -db {input.db} -num_threads {threads} -query $i -outfmt 6 -max_target_seqs 1 -out "+ GENERAL_PATH + "{wildcards.ech}/partial_read_files/result_read_on_vdb_$a ; done && touch {output}"
+    
+    rule merge megablast_output_results:
+        input:
+            GENERAL_PATH + "{ech}/partial_read_files/.result_read_on_vdb.decoy"
+        output:
+            GENERAL_PATH + "{ech}/partial_read_files/all_vdb_match"
+        shell:
+            "touch {input} && "\
+            "cat "+GENERAL_PATH+"{wildcards.ech}/partial_read_files/result_read_on_vdb_* | cut -f 1,2 | sort | uniq > {output}"
+
+    
+    rule select_viral_reads:
+        input:
+            fastq     = GENERAL_PATH + "{ech}/clean_reads.fastq",
+            vdb_match = GENERAL_PATH + "{ech}/partial_read_files/all_vdb_match",
+            script    = PYTHON_SCRIPTS + "filter_matching_reads.py"
+        output:
+            GENERAL_PATH + "{ech}/all_viral_reads.fastq"
+        shell:
+            "python3 {input.script} --read_id {input.vdb_match} --read_file {input.fastq} --output {output}"
+    
+    
+    ## les sept regles suivantes, travaillent ensemble afin de récuperer
+    ## la référence viral la plus représentées parmis les résultats de megablast.
+    rule get_AN_from_megablast_results:
+        input:
+           GENERAL_PATH + "{ech}/partial_read_files/all_vdb_match"
+        output:
+           GENERAL_PATH + "{ech}/vdb_uniq_AN"
+        shell:
+            "cat {input} | cut -f 2 | sort | uniq > {output}"
+            
+    rule sort_AN_to_remove_duplicates:
+        input:
+           vdb_ids = VDB_IDS,
+           uniq_AN = GENERAL_PATH + "{ech}/vdb_uniq_AN"
+        output:
+           GENERAL_PATH + "{ech}/all_complete_genome_id"
+        shell:
+            "grep -f {input.uniq_AN} {input.vdb_ids} | grep -i 'complete genome' > {output}"
+    
+    rule get_full_definition_from_AN:
+        input:
+           GENERAL_PATH + "{ech}/all_complete_genome_id"
+        output:
+           GENERAL_PATH + "{ech}/vdb_AN_only"
+        shell:
+            "cat {input} | cut -f 1 --delimiter=' ' > {output}"
+    
+    rule counts_AN_occurence:
+        input:
+           vdb_results = GENERAL_PATH + "{ech}/partial_read_files/all_vdb_match",
+           vdb_AN      = GENERAL_PATH + "{ech}/vdb_AN_only"
+        output:
+           GENERAL_PATH + "{ech}/vdb_AN_counts"
+        shell:
+            "for i in `cat {input.vdb_AN}`; do grep -c $i {input.vdb_results} >> {output}; done"
+    
+    rule paste_occurence_with_AN:
+        input:
+           counts             = GENERAL_PATH + "{ech}/vdb_AN_counts",
+           complete_genome_id = GENERAL_PATH + "{ech}/all_complete_genome_id"
+        output:
+           merged = GENERAL_PATH + "{ech}/vdb_counts_AN_id_merged"
+        shell:
+            "paste {input.counts} {input.complete_genome_id} > {output.merged}"
+    
+    rule get_most_present_AN:
+        input:
+           GENERAL_PATH + "{ech}/vdb_counts_AN_id_merged"
+        output:
+           GENERAL_PATH + "{ech}/most_present_AN"
+        shell:
+            "sort -nr {input} | head -n 1 | cut -f 2 | cut -f 1 --delimiter=' ' > {output}"
+    
+    rule get_most_present_viral_ref:
+        input:
+           script = PATH + PYTHON_SCRIPTS + "extract_fasta_from_gb.py",
+           most = GENERAL_PATH + "{ech}/most_present_AN"
+        output:
+           GENERAL_PATH + "{ech}/most_represented_viral_ref.fasta"
+        shell:
+            "python3 {input.script} /home/aflageul/vdb/viral_gbk_files/`cat {input.most}`.gbk {output}"
+    
+    
+    ################################################################################
+    ################ Fifth Step - Alignement On The First Viral Seq ################
+    ################################################################################
+    
+    # Because denovo assembler are working better if the mean coverage depth of read
+    # to a reference is close to 80, it is necessary to know how many reads are
+    # requiered to have this mean coverage on a reference.
+    # It is necessary to align clean reads to the viral reference and to determine
+    # the mean coverage depth.
+    
+    rule align1: 
+        input:
+            cleaned = GENERAL_PATH + "{ech}/all_viral_reads.fastq",
+            ref     = GENERAL_PATH + "{ech}/most_represented_viral_ref.fasta"
+        output:
+            GENERAL_PATH + "{ech}/selected_reads_on_most_represented_viral_ref.sam"
+        conda:
+            CONDA_PATH + "bwa.yalm"
+        threads: thrds
+        shell:
+            "bwa index {input.ref} && "\
+            "bwa mem -t {threads} -v 3 {input.ref} {input.cleaned} -o {output}"
+    
+    # Second, the alignment in sam format is converted to bam format
+    # the file is then sorted according to the positions.
+    rule convert_and_sort_1:
+        input:
+            GENERAL_PATH + "{ech}/selected_reads_on_most_represented_viral_ref.sam"
+        output:
+            bam_clean    = GENERAL_PATH + "{ech}/selected_reads_on_most_represented_viral_ref.bam",
+            sorted_clean = GENERAL_PATH + "{ech}/selected_reads_on_most_represented_viral_ref.bam.sorted"
+        conda:
+            CONDA_PATH + "samtools.yalm"
+        shell:
+            "samtools view -bhS -o {output.bam_clean} {input} && "\
+            "samtools sort -O BAM -o {output.sorted_clean} {output.bam_clean}"
+    
+    # Third, the coverage for each site is determined (-aa absolutly all position,
+    # including unused part of the reference sequence)
+    rule get_read_depth1:
+        input:
+            GENERAL_PATH + "{ech}/selected_reads_on_most_represented_viral_ref.bam.sorted"
+        output:
+            GENERAL_PATH + "{ech}/coverage_selected_reads_on_most_represented_viral_ref"
+        conda:
+            CONDA_PATH + "samtools.yalm"
+        shell:
+            "samtools depth -aa -d 0 {input} > {output}"
+    
+    # Fourth the coverage depth graph is created
+    rule visual_coverage1:
+        input:
+            filin  = GENERAL_PATH + "{ech}/coverage_selected_reads_on_most_represented_viral_ref",
+            script = PATH + R_SCRIPTS + "visualize_coverage_depth.R"
+        output:
+            GENERAL_PATH + "{ech}/coverage_depth_on_most_represented_viral_ref.png"
+        conda:
+            CONDA_PATH + "r-env.yalm"
+        shell:
+            "R --vanilla --args {input.filin} {output} < {input.script}"
+    
+    
+    # Fifth calculate the number of read that are requiered to set 
+    # a 80 mean coverage depth.
+    # the python script display the result in the terminal
+    # so that it can be directly used to subsample the read files
+    rule calculate_requiered_reads_nber_N_subsampling_for_spades:
+        input:
+            clean_read = GENERAL_PATH + "{ech}/all_viral_reads.fastq",
+            cov        = GENERAL_PATH + "{ech}/coverage_selected_reads_on_most_represented_viral_ref",
+            script     = PATH + PYTHON_SCRIPTS + "calculate_read_number_for_coverage_60.py"
+        output:
+            spades_in = GENERAL_PATH + "{ech}/subsample_for_spades.fastq"
+        conda:
+            CONDA_PATH + "seqtk.yalm"
+        shell:
+            "nbre=`python3 {input.script} --reads {input.clean_read} --cov {input.cov}` && "\
+            "echo $nbre && "\
+            "seqtk sample {input.clean_read} $nbre > {output.spades_in}"
+    
+    
+    
+    ################################################################################
+    ################## Sixth Step - Get Mira Input Raw Reads #######################
+    ################################################################################
+    
+    # to use Mira, raw reads need to be used.
+    # If a remove reads step has been done, then it is necessary to take raw_reads
+    # that are only present in the filtered_clean_reads file.
+    # The next rule will compare names of read present in both raw_reads_file and
+    # filtered_clean_reads.
+    # If reads are presents in the second file, then raw reads from the first file
+    # will be harvested and used in the Mira step
+    if pair_end == True:
+        rule FilterRawReads_from_PEdata:
+            input:
+                raw1     = GENERAL_PATH + "{ech}/Results/{ech}_raw_reads1.fastq.gz",
+                raw2     = GENERAL_PATH + "{ech}/Results/{ech}_raw_reads2.fastq.gz",
+                filtered = GENERAL_PATH + "{ech}/subsample_for_spades.fastq",
+                script   = PATH + PYTHON_SCRIPTS + "FilterIn_for_mira.py"
+            output:
+                temp(GENERAL_PATH + "{ech}/RawReads_subsample2.fastq")
+            shell:
+                "python3 {input.script} --data pe --raw1 {input.raw1} --raw2 {input.raw2} --filt {input.filtered} --out {output}"
+    
+        rule check_duplicate_names:
+            input:
+                script = PATH + PYTHON_SCRIPTS + "check_duplicates_ReadName.py",
+                read   = GENERAL_PATH + "{ech}/RawReads_subsample2.fastq"
+            output:
+                mira_in = GENERAL_PATH + "{ech}/ContigMira/InputMira.fastq",
+                prefix  = GENERAL_PATH + "{ech}/ContigMira/prefix_read_name"
+            shell:
+                "python3 {input.script} --read_file {input.read} --outfile {output.mira_in} && "\
+                "head -n 1 {output.mira_in} | cut -c2-20 > {output.prefix}"
+    
+    elif pair_end == False:
+        rule FilterRawReads_from_SEdata:
+            input:
+                raw      = GENERAL_PATH + "{ech}/Results/{ech}_raw_reads.fastq.gz",
+                filtered = GENERAL_PATH + "{ech}/subsample_for_spades.fastq",
+                script   = PATH + PYTHON_SCRIPTS + "FilterIn_for_mira.py"
+            output:
+                mira_in = GENERAL_PATH + "{ech}/ContigMira/InputMira.fastq",
+                prefix  = GENERAL_PATH + "{ech}/ContigMira/prefix_read_name"
+            shell:
+                "python3 {input.script} --data se --raw1 {input.raw} --filt {input.filtered} --out {output.mira_in} && "
+                "head -n 1 {output.mira_in} | cut -c2-20 > {output.prefix}"
+    
+    
+    ################################################################################
+    ################### Seventh Step - Denovo Assembling ###########################
+    ################################################################################
+    
+    # This option is set for ion-torrent data only.
+    # If not, then option is empty.
+    if pair_end == True: option = ""
+    else: option = "--iontorrent "
+    
+    # Now the requiered number of read has been harvested, it is used to generate
+    # contigs using the denovo assembler SPAdes and Mira
+    # le choix est fait de ne pas modifier outremesure la ligne de commande,
+    # en particulier de ne pas utiliser l'option -k (-kmersize),
+    # car je ne sais pas trop à quoi elle sert.
+    rule DENOVO_spades:
+        input:
+            GENERAL_PATH + "{ech}/subsample_for_spades.fastq"
+        output:
+            GENERAL_PATH + "{ech}/ContigSpades/contigs.fasta"
+        conda:
+            CONDA_PATH + "spades.yalm"
+        threads: thrds
+        shell:
+            "spades.py --threads {threads} --memory 40 "+option+"--careful -s {input} -o "+ GENERAL_PATH + "{wildcards.ech}/ContigSpades/"
+    
+    
+    # to run mira, it is necessary to write a manifest file
+    rule create mira_manif_conf:
+        input:
+            GENERAL_PATH + "{ech}/ContigMira/InputMira.fastq",
+            GENERAL_PATH + "{ech}/ContigMira/prefix_read_name"
+        output:
+            GENERAL_PATH + "{ech}/ContigMira/manifest.txt"
+        run:
+            with open(input[1], "r") as filin:
+                prefix = str(filin.readlines()[0][:-1])# take the first line, remove the \n character
+            with open(output[0],"w") as filout:
+                filout.write("project = " + PROJECT[:-1] + "\n")
+                filout.write("job = genome,denovo,accurate\n")
+                filout.write("readgroup = unpaired_reads\n")
+    #            filout.write("rename_prefix = "+ prefix + " mira\n")
+                filout.write("data = "+input[0]+"\n")
+                filout.write("technology = "+technology+"\n")
+    
+    
+    path_mira = GENERAL_PATH + "{wildcards.ech}/ContigMira/"
+    rule DENOVO_mira:
+        input:
+            GENERAL_PATH + "{ech}/ContigMira/manifest.txt"
+        output:
+            GENERAL_PATH + "{ech}/ContigMira/mira_log_assembly.txt"
+        conda:
+            CONDA_PATH + "mira.yalm"
+        threads: thrds
+        shell:
+            "mira --threads {threads} --cwd "+path_mira+" {input} 2> {output}"
+    
+    
+    ################################################################################
+    ################## Eightth Step - Get Bet Viral Fasta Reference ################
+    ################################################################################
+    # Previously generated contigs from Spades and Mira are now filtered in order
+    # to keep only contigs with a minimum size.
+    # Then Megablast is ran on the filtered in contigs and the best reference
+    # is harvested.
+    rule MEGABLAST_for_spades:
+        input:
+            contig_spades = GENERAL_PATH + "{ech}/ContigSpades/contigs.fasta",
+            script        = PATH + PYTHON_SCRIPTS + "reduce_contig_number.py"
+        output:
+            feed_mega   = GENERAL_PATH + "{ech}/" +"ContigSpades/input_megablast_spades",
+            mega_spades = GENERAL_PATH + "{ech}/megablast_spades"
+        conda:
+            CONDA_PATH + "megablast.yalm"
+        shell:
+            "python3 {input.script} --contigs {input.contig_spades} --outfile {output.feed_mega} --size_limit 1000 && "\
+            "megablast -d "+metaDB+" -i {output.feed_mega} > {output.mega_spades}"
+    
+    
+    rule MEGABLAST_for_mira:
+        input:
+            contig_mira = GENERAL_PATH + "{ech}/ContigMira/",
+            log_file    = GENERAL_PATH + "{ech}/ContigMira/mira_log_assembly.txt",
+            script      = PATH + PYTHON_SCRIPTS + "reduce_contig_number.py"
+        output:
+            feed_mega = GENERAL_PATH + "{ech}/" +"ContigMira/input_megablast_mira",
+            mega_mira = GENERAL_PATH + "{ech}/megablast_mira"
+        conda:
+            CONDA_PATH + "megablast.yalm"
+        shell:
+            "touch {input.log_file} && "\
+            "python3 {input.script} --contigs {input.contig_mira}"+PROJECT[:-1]+"_assembly/"+PROJECT[:-1]+"_d_results/"+PROJECT[:-1]+"_out.unpadded.fasta --outfile {output.feed_mega} --size_limit 1000 && "\
+            "megablast -d "+metaDB+" -i {output.feed_mega} > {output.mega_mira}"
+    
+    
+    # The reference must be carefully chosen, because the consensus creation depend
+    # of the reference (because reads will align differently on different reference)
+    # - the first command line allow to retrieve the accession number ;
+    # - the second command line allow to retrieve the fasta seq using AN
+    rule get_fasta_ref:
+        input:
+            spades = GENERAL_PATH + "{ech}/megablast_spades",
+            mira   = GENERAL_PATH + "{ech}/megablast_mira",
+            script = PATH + PYTHON_SCRIPTS + "bestRefName-extraction_from_megaB.py"
+        output:
+            ref         = GENERAL_PATH + "{ech}/BestRefMegaB.fasta",
+            access_nber = GENERAL_PATH + "{ech}/megablast_best_ref_AN"
+        conda:
+            CONDA_PATH + "megablast.yalm"
+        shell:
+            "python3 {input.script} -s {input.spades} -o {output.access_nber} -m {input.mira} && "\
+            "blastdbcmd -db "+metaDB+" -dbtype nucl -entry_batch {output.access_nber} -out {output.ref} -outfmt '%f'"
+    
+    
+    
+    ################################################################################
+    ######################## Nineth step - Get consensus Sequence ##################
+    ################################################################################
+    # All reads are realigned on the novel viral reference
+    rule AlignReadsOnBestViralRef:
+        input:
+            reads = GENERAL_PATH + "{ech}/clean_reads.fastq",
+            ref   = GENERAL_PATH + "{ech}/BestRefMegaB.fasta"
+        output:
+            sam = GENERAL_PATH + "{ech}/alignment_on_viral_ref.sam",
+            ref = GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_BestViralRef.fasta"
+        conda:
+            CONDA_PATH + "bwa.yalm"
+        threads: thrds
+        shell:
+            "cp {input.ref} {output.ref} && "\
+            "bwa index {input.ref} && "\
+            "bwa mem -t {threads} -v 3 {input.ref} {input.reads} > {output.sam}"
+    
+    
+    # The previously generated bamfile is converted in Bamfile and sorted according
+    # to the read position
+    # The coverage depth of the previous alignment is determined for all position
+    # including unused reference, with no limitation.
+    rule TurnToBam_GetReadDepth_ExtractUncoveredRegion_1:
+        input:
+            sam    = GENERAL_PATH + "{ech}/alignment_on_viral_ref.sam",
+            script = PATH + PYTHON_SCRIPTS + "get_uncovered_regions.py"
+        output:
+            bam     = GENERAL_PATH + "{ech}/alignment_on_viral_ref.bam",
+            sort    = GENERAL_PATH + "{ech}/sorted_alignment_on_viral_ref.bam",
+            sort_cp = GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_reads_on_BestViralRef.bam",
+            out     = GENERAL_PATH + "{ech}/alignment_reads_on_best_ref",
+            unco    = GENERAL_PATH + "{ech}/Results/{ech}_consensus_uncovered_region"
+        conda:
+            CONDA_PATH + "samtools.yalm"
+        shell:
+            "samtools view -b -S -o {output.bam} {input.sam} && "\
+            "samtools sort -O BAM -o {output.sort} {output.bam} && "\
+            "samtools index {output.sort} && "\
+            "cp {output.sort} {output.sort_cp} && "\
+            "cp {output.sort}.bai {output.sort_cp}.bai && "\
+            "samtools depth -aa -d 0 {output.sort} > {output.out} && "\
+            "python3 {input.script} --input {output.out} --output {output.unco}"
+    
+    
+    ## The consensus sequence is determined by applying variant calling on
+    ## the best viral reference
+    ## uncovered region are replaced by N using the --mask option of the
+    ## bcftools consensus' command
+    # 
+    #rule GetConsensus:
+    #    input:
+    #        ref    = GENERAL_PATH + "{ech}/BestRefMegaB.fasta",
+    #        bam    = GENERAL_PATH + "{ech}/sorted_alignment_on_viral_ref.bam",
+    #        mask   = GENERAL_PATH + "{ech}/Results/{ech}_consensus_uncovered_region",
+    #        script = PATH + PYTHON_SCRIPTS + "rename_consensus.py"
+    #    output:
+    #        pileup         = GENERAL_PATH + "{ech}/consensus_pileup_file.vcf.gz",
+    #        vcffile        = GENERAL_PATH + "{ech}/consensus_vcffile.vcf.gz",
+    #        filtered       = GENERAL_PATH + "{ech}/consensus_filtered_vcf.vcf.gz",
+    #        cons           = GENERAL_PATH + "{ech}/consensus_wrong_name.fa",
+    #        consensus      = GENERAL_PATH + "{ech}/Results/{ech}_viral_consensus.fasta",
+    #        consensus_copy = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_consensus.fasta"
+    #    conda:
+    #        CONDA_PATH + "bcftools.yalm"
+    #    threads: thrds
+    #    shell:
+    #        "bcftools mpileup -O z -o {output.pileup} --threads {threads} -Q 0 -q 0 -p -d 250 -f {input.ref} {input.bam} && "\
+    #        "bcftools call -c --keep-masked-ref --threads {threads} --ploidy Y -O z -o {output.vcffile} {output.pileup} && "\
+    #        "bcftools filter -o {output.filtered} -O z --threads {threads} -i '(DP4[0]+DP4[1]) < (DP4[2]+DP4[3]) && (DP4[2]+DP4[3]) > 0' {output.vcffile} && "\
+    #        "tabix {output.filtered} && "\
+    #        "bcftools consensus --mask {input.mask} -f {input.ref} -o {output.cons} {output.filtered} && "\
+    #        "python3 {input.script} -i {output.cons} -o {output.consensus} && "\
+    #        "cp {output.consensus} {output.consensus_copy}" # this command is written in order to perform indexation of the sequence later in an other directory
+    
+    rule GetConsensus:
+        input:
+            bam = GENERAL_PATH + "{ech}/sorted_alignment_on_viral_ref.bam",
+            script = PATH + PYTHON_SCRIPTS + "process_pileup_file.py"
+        output:
+            cons    = GENERAL_PATH + "{ech}/Results/{ech}_viral_consensus.fasta",
+            pileup  = GENERAL_PATH + "{ech}/sorted_alignment_on_viral_ref.pileup"
+        conda:
+            CONDA_PATH + "samtools.yalm"
+        shell:
+            "samtools mpileup -aa -Q 0 -q 0 {input.bam} > {output.pileup} && "\
+            "python3 {input.script} -p {output.pileup} > {output.cons}"
+    
+    
+    ## the two next rules are necessary to generate file for IGV visualisation
+    rule align_stuff_on_viralref:
+        input:
+            ref       = GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_BestViralRef.fasta",
+            spades    = GENERAL_PATH + "{ech}/ContigSpades/input_megablast_spades",
+            mira      = GENERAL_PATH + "{ech}/ContigMira/input_megablast_mira",
+            consensus = GENERAL_PATH + "{ech}/Results/{ech}_viral_consensus.fasta"
+        output:
+            spades    = temp(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_spades_on_viralref.sam"),
+            mira      = temp(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_mira_on_viralref.sam"),
+            consensus = temp(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_consensus_on_viralref.sam")
+        conda:
+            CONDA_PATH + "bwa.yalm"
+        shell:
+            "bwa index {input.ref} && "\
+            "bwa mem -t {threads} -v 3 {input.ref} {input.spades} > {output.spades} && "\
+            "bwa mem -t {threads} -v 3 {input.ref} {input.mira} > {output.mira} && "\
+            "bwa mem -t {threads} -v 3 {input.ref} {input.consensus} > {output.consensus}"
+    
+    rule turn_sam_to_bam:
+        input:
+            spades    = GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_spades_on_viralref.sam",
+            mira      = GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_mira_on_viralref.sam",
+            consensus = GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_consensus_on_viralref.sam"
+        output:
+            bam_spades       = temp(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_spades_on_viralref.bam"),
+            bam_mira         = temp(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_mira_on_viralref.bam"),
+            bam_consensus    = temp(GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_consensus_on_viralref.bam"),
+            sorted_spades    =      GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_spades_on_viralref.sorted.bam",
+            sorted_mira      =      GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_mira_on_viralref.sorted.bam",
+            sorted_consensus =      GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_consensus_on_viralref.sorted.bam",
+            index_spades     =      GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_spades_on_viralref.sorted.bam.bai",
+            index_mira       =      GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_mira_on_viralref.sorted.bam.bai",
+            index_consensus  =      GENERAL_PATH + "{ech}/Results/for_IGV/{ech}_consensus_on_viralref.sorted.bam.bai"
+        conda:
+            CONDA_PATH + "samtools.yalm"
+        shell:
+            "samtools view -b -S -o {output.bam_spades} {input.spades} && "\
+            "samtools sort -O BAM -o {output.sorted_spades} {output.bam_spades} && "\
+            "samtools index {output.sorted_spades} && "\
+            "samtools view -b -S -o {output.bam_mira} {input.mira} && "\
+            "samtools sort -O BAM -o {output.sorted_mira} {output.bam_mira} && "\
+            "samtools index {output.sorted_mira} && "\
+            "samtools view -b -S -o {output.bam_consensus} {input.consensus} && "\
+            "samtools sort -O BAM -o {output.sorted_consensus} {output.bam_consensus} && "\
+            "samtools index {output.sorted_consensus}"
+    
+    
+    # Visualize the coverage_depth using a R script.
+    rule visual_coverage2:
+        input:
+            filin  = GENERAL_PATH + "{ech}/alignment_reads_on_best_ref",
+            script = PATH + R_SCRIPTS + "visualize_coverage_depth.R"
+        output:
+            GENERAL_PATH + "{ech}/Results/{ech}_coverage_reads_on_best_viralref.png"
+        conda:
+            CONDA_PATH + "r-env.yalm"
+        shell:
+            "R --vanilla --args {input.filin} {output} < {input.script}"
+
+
+    rule blast_viral_consensus_on_vdb:
+        input:
+            cons   = GENERAL_PATH + "{ech}/Results/{ech}_viral_consensus.fasta",
+            script = PATH + PYTHON_SCRIPTS + "rename_consensus.py"
+        output: 
+            megaB = GENERAL_PATH + "{ech}/mutant_swarm_composition/consensus_against_vdb_results",
+            AN    = GENERAL_PATH + "{ech}/mutant_swarm_composition/AN_viral_ref",
+            renamed = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_consensus_renamed.fasta"
+        conda:
+            CONDA_PATH + "megablast.yalm"
+        threads: thrds
+        shell:
+            "blastn -task megablast -db " + VDB_PATH + " -query {input.cons} -num_threads {threads} > {output.megaB} && "\
+            "grep -A 2 'Sequences producing' {output.megaB} | tail -n 1 | cut -f 3 --delimiter=' ' > {output.AN} && "\
+            "python3 {input.script} -i {input.cons} -o {output.renamed} -a `cat {output.AN}`"
+
+
+elif generate_consensus == False:
+    rule relocate_provided_sequence_and_rename_it:
+        input:
+            cons   = config["CONSENSUS_FILE"],
+            script = PATH + PYTHON_SCRIPTS + "rename_consensus.py"
+        output:
+            megaB   = GENERAL_PATH + "{ech}/mutant_swarm_composition/consensus_against_vdb_results",
+            AN      = GENERAL_PATH + "{ech}/mutant_swarm_composition/AN_viral_ref",
+            renamed = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_consensus_renamed.fasta"
+        conda:
+            CONDA_PATH + "megablast.yalm"
+        threads: thrds
+        shell:
+            "blastn -task megablast -db " + VDB_PATH + " -query {input.cons} -num_threads {threads} > {output.megaB} && "\
+            "grep -A 2 'Sequences producing' {output.megaB} | tail -n 1 | cut -f 3 --delimiter=' ' > {output.AN} && "\
+            "python3 {input.script} -i {input.cons} -o {output.renamed} -a `cat {output.AN}`"
+
+################################################################################  
+##########                                                            ##########
+##########                          Third  Part                       ##########
+##########                                                            ##########
+################################################################################
+# the third part allow the analysis of the mutant swarm composition,
+# i.e. it determines the nucleotidic composition at each position of
+# the viral genome and calculate the proportion of the different nucleotide 
+
+# First, you need to extract the genbank file corresponding to the best
+# reference used to get the consensus sequence.
+
+
+rule get_genbank_reference_data:
+    input:
+        script1 = PATH + PYTHON_SCRIPTS + "extract_fasta_from_gb.py",
+        script2 = PATH + PYTHON_SCRIPTS + "extract_gene_position_from_gb_file.py",
+        AN      = GENERAL_PATH + "{ech}/mutant_swarm_composition/AN_viral_ref"
+    output:
+        fasta = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_reference.fasta",
+        pos   = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_reference_gene_position.json"
+    shell:
+        "python3 {input.script1} "+ GB_PATH +"`cat {input.AN}`.gbk {output.fasta} && "\
+        "python3 {input.script2} -i "+ GB_PATH +"`cat {input.AN}`.gbk -o {output.pos} -a {wildcards.ech}"
+
+
+# Alignment of the consensus sequence and the reference sequence is realised,
+# using the NEEDLEMAN-WUNSCH algorythm, which is known to be the best way to
+# align two sequneces.
+rule needle_alignement:
+    input:
+        cons = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_consensus_renamed.fasta",
+        ref  = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_reference.fasta"
+    output:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/ref_consensus_alignement.needle"
+    conda:
+        CONDA_PATH + "emboss.yalm"
+    shell:
+        "needle -asequence {input.ref} -bsequence {input.cons} -gapopen 10.0 -gapextend 0.05 -outfile {output}"
+
+
+# Once the alignment is performed, it is used with the json file containing gene
+# names and locations from the reference sequence in order to automatically
+# annotate/transfert gene annotation from the reference to the consensus and
+# store results in a json file.
+rule give_position_to_consensus:
+    input:
+        json   = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_reference_gene_position.json",
+        needle = GENERAL_PATH + "{ech}/mutant_swarm_composition/ref_consensus_alignement.needle",
+        script = PATH + PYTHON_SCRIPTS + "add_position_to_consensus.py"
+    output:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/gene_position_viral_consensus.json"
+    shell:
+        "python3 {input.script} -i {input.needle} -j {input.json} --output {output}"
+
+
+# The previously created json file is converted into a bedfile.
+rule convert_json_to_bed:
+    input:
+        script = PATH + PYTHON_SCRIPTS + "convert_json2bed.py",
+        json   = GENERAL_PATH + "{ech}/mutant_swarm_composition/gene_position_viral_consensus.json",
+    output:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/gene_position_viral_consensus.bed"
+    shell:
+        "python3 {input.script} -i {input.json} -o {output}"
+
+
+# Clean reads are aligned to the consensus sequence in order to further realise
+# variant calling.
+rule alignentAgainstConsensus1:
+    input:
+        cons  = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_consensus_renamed.fasta", 
+        reads = GENERAL_PATH + "{ech}/clean_reads.fastq"
+    output:
+        sam = GENERAL_PATH + "{ech}/mutant_swarm_composition/clean_reads_against_consensus.sam"
+    conda:
+        CONDA_PATH + "bwa.yalm"
+    threads: thrds
+    shell:   
+        "bwa index {input.cons} && "\
+        "bwa mem -t {threads} -v 3 {input.cons} {input.reads} > {output.sam}"
+
+
+# Alignment create a samfile containing all reads (aligned or not).
+# The Samfile is converted in a compressed format known as Bamfile, which is
+# then sorted according to the read position and indexed.
+rule turn_2_bam_N_sort:
+    input:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/clean_reads_against_consensus.sam"
+    output:
+        bam      = GENERAL_PATH + "{ech}/mutant_swarm_composition/clean_reads_against_consensus.bam",
+        selected = GENERAL_PATH + "{ech}/mutant_swarm_composition/selected_reads.bam",
+        reads    = GENERAL_PATH + "{ech}/mutant_swarm_composition/reads_aligned_on_consensus.fastq"
+    conda:
+        CONDA_PATH + "samtools.yalm"
+    shell:
+        "samtools view -b -S -o {output.bam} {input} && "\
+        "samtools view -b -F 4 -o {output.selected} {output.bam} && "\
+        "samtools bam2fq {output.selected} > {output.reads}"
+
+
+rule last_subsampling:
+    input:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/reads_aligned_on_consensus.fastq"
+    output:
+        GENERAL_PATH +"{ech}/mutant_swarm_composition/last_subsample.fastq"
+    conda:
+        CONDA_PATH + "seqtk.yalm"
+    shell:
+        "seqtk sample {input} 100000 > {output}"
+
+
+# The Fabrice get_org script is maybe replacable by a published tool CENTRIFUGE
+# I have to see if this tools is able to do what Fabrice script does
+# the next rule is homemade script written by Fabrice Touzain
+# it takes one read file and align all the reads against the wanted database
+# using a wanted alignment algorythm (here megablast algorythm and nt database
+# have been chosen).
+# The program generate different output files with the AN and TAXID of the
+# different references matching the reads.
+rule get_org2:
+    input:
+        subsample = GENERAL_PATH +"{ech}/mutant_swarm_composition/last_subsample.fastq",
+        script = "/results/anses/scripts/NGS_get_organisms_of_main_blast_matchs.pl"
+    output:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/remove_host_getorg.all.fa",
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/remove_host_getorg.all.fastq",
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/remove_host_getorg.megablast.species.txt",
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/remove_host_getorg.megablast.txt"
+    conda:
+        CONDA_PATH + "megablast.yalm"
+    threads: thrds
+    shell:
+    # the sequencer option is for bowtie2 only: Illumina by default
+    # every other strings are supposed to be illumina,
+    # only tstrings present in the list are recognized, see man page
+        "/usr/bin/perl {input.script} -nb_threads {threads} -db_str "+metaDB+" "\
+        "-reads_f {input.subsample} -id remove_host_getorg "\
+        "-res_dir " + GENERAL_PATH + "{wildcards.ech}/mutant_swarm_composition "\
+        "-method megablast -sequencer ion-torrent"
+
+
+checkpoint get_best_ref_accession_nber1:
+    input:
+        getorg = GENERAL_PATH + "{ech}/mutant_swarm_composition/remove_host_getorg.megablast.species.txt",
+        script = PATH + PYTHON_SCRIPTS + "get_non_viral_AN_from_getorg_species_file.py"
+    output:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/none_viral_AN_from_remove_host"
+    shell:
+        "python3 {input.script} -i {input.getorg} -o {output}"
+
+
+rule get_host_seq_on_local_database:
+    input:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/none_viral_AN_from_remove_host"
+    output:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/multifasta_seq_ref_for_remove_reads.fasta"
+    conda:
+        CONDA_PATH + "megablast.yalm"
+    shell:
+        "blastdbcmd -db "+metaDB+" -dbtype nucl -entry_batch {input} -out {output} -outfmt '%f'"
+
+
+rule concatenate_none_viral_seq:
+    input:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/multifasta_seq_ref_for_remove_reads.fasta"
+    output:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/concatenated_none_viral_seq.fasta"
+    shell:   
+        "echo '>concatenated_none_viral_seq' > {output} && "\
+        "cat {input} | grep -v '>' | tr -d '\n' >> {output}"
+
+
+rule align_on_none_viral_ref:
+    input:
+        ref   = GENERAL_PATH + "{ech}/mutant_swarm_composition/concatenated_none_viral_seq.fasta",
+        reads = GENERAL_PATH + "{ech}/mutant_swarm_composition/reads_aligned_on_consensus.fastq"
+    output:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_reads_against_none_viral_ref.sam"
+    conda:
+        CONDA_PATH + "bwa.yalm"
+    threads: thrds
+    shell:
+        "bwa index {input.ref} && "\
+        "bwa mem -t {threads} -v 3 {input.ref} {input.reads} > {output}"
+
+
+rule get_viral_reads:
+    input:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_reads_against_none_viral_ref.sam",
+    output:
+        bam      = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_reads_against_none_viral_ref.bam",
+        selected = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_reads_against_none_viral_ref.selected.bam",
+        reads    = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_reads.fastq"
+    conda:
+        CONDA_PATH + "samtools.yalm"
+    shell:
+        "samtools view -b -S -o {output.bam} {input} && "\
+        "samtools view -b -f 4 -o {output.selected} {output.bam} && "\
+        "samtools bam2fq {output.selected} > {output.reads}"
+
+
+rule alignentAgainstConsensus2:
+    input:
+        cons  = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_consensus_renamed.fasta", 
+        reads = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_reads.fastq"
+    output:
+        GENERAL_PATH + "{ech}/mutant_swarm_composition/selected_reads_against_consensus.sam"
+    conda:
+        CONDA_PATH + "bwa.yalm"
+    threads: thrds
+    shell:
+        "bwa mem -t {threads} -v 3 {input.cons} {input.reads} > {output}"
+
+
+# The previously generated Samfile is converted in Bamfile and sorted according
+# to the read position
+# The coverage depth of the previous alignment is determined for all position
+# including unused reference, with no limitation.
+
+def choose_samfile(wildcards):
+    with checkpoints.get_best_ref_accession_nber1.get(ech=wildcards.ech).output[0].open() as f:
+        if f.read().strip() == "No none viral reference detected.":
+            return GENERAL_PATH + "{ech}/mutant_swarm_composition/clean_reads_against_consensus.sam"
+        else:
+            return GENERAL_PATH + "{ech}/mutant_swarm_composition/selected_reads_against_consensus.sam"
+
+if remove_duplicates is True:
+    rule TurnToBam_GetReadDepth_ExtractUncoveredRegion_2:
+        input:
+            cons   = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_consensus_renamed.fasta", 
+            script = PATH + PYTHON_SCRIPTS + "get_uncovered_regions.py",
+            sam    = choose_samfile
+        output:
+            bam    = GENERAL_PATH + "{ech}/mutant_swarm_composition/alignment_on_consensus.bam",
+            ns     = GENERAL_PATH + "{ech}/mutant_swarm_composition/namesorted_alignment_on_consensus.bam",
+            fix    = GENERAL_PATH + "{ech}/mutant_swarm_composition/fixmate.bam",
+            sort   = GENERAL_PATH + "{ech}/mutant_swarm_composition/sorted_alignment_on_consensus.bam",
+            nodup  = GENERAL_PATH + "{ech}/mutant_swarm_composition/sorted_nodup_alignment_on_consensus.bam",
+            index2 = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_consensus_renamed.fasta.fai",
+            index1 = GENERAL_PATH + "{ech}/mutant_swarm_composition/sorted_nodup_alignment_on_consensus.bam.bai",
+            out    = GENERAL_PATH + "{ech}/Results/{ech}_coverage_each_position",
+            unco   = GENERAL_PATH + "{ech}/Results/{ech}_consensus_uncovered_region"
+        conda:
+            CONDA_PATH + "samtools.yalm"
+        shell:
+            "samtools faidx {input.cons} && "\
+            "samtools view -b -S -o {output.bam} {input.sam} && "\
+            "samtools sort -n -o {output.ns} {output.bam} && "\
+            "samtools fixmate -m {output.ns} {output.fix} && "\
+            "samtools sort -O BAM -o {output.sort} {output.bam} && "\
+            "samtools markdup -r {output.sort} {output.nodup} && "\
+            "samtools index {output.nodup} && "\
+            "samtools depth -aa -d 0 {output.nodup} > {output.out} && "\
+            "python3 {input.script} --input {output.out} --output {output.unco}"
+
+    bam_file_to_use = GENERAL_PATH + "{ech}/mutant_swarm_composition/sorted_nodup_alignment_on_consensus.bam"
+    
+elif remove_duplicates is False:    
+    rule TurnToBam_GetReadDepth_ExtractUncoveredRegion_2:
+        input:
+            cons   = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_consensus_renamed.fasta", 
+            script = PATH + PYTHON_SCRIPTS + "get_uncovered_regions.py",
+            sam    = choose_samfile
+        output:
+            bam    = GENERAL_PATH + "{ech}/mutant_swarm_composition/alignment_on_consensus.bam",
+            sort   = GENERAL_PATH + "{ech}/mutant_swarm_composition/sorted_alignment_on_consensus.bam",
+            index1 = GENERAL_PATH + "{ech}/mutant_swarm_composition/sorted_alignment_on_consensus.bam.bai",
+            index2 = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_consensus_renamed.fasta.fai",
+            cov    = GENERAL_PATH + "{ech}/Results/{ech}_coverage_each_position",
+            unco   = GENERAL_PATH + "{ech}/Results/{ech}_consensus_uncovered_region"
+        conda:
+            CONDA_PATH + "samtools.yalm"
+        shell:
+            "samtools faidx {input.cons} && "\
+            "samtools view -b -S -o {output.bam} {input.sam} && "\
+            "samtools sort -O BAM -o {output.sort} {output.bam} && "\
+            "samtools index {output.sort} && "\
+            "samtools depth -aa -d 0 {output.sort} > {output.cov} && "\
+            "python3 {input.script} --input {output.cov} --output {output.unco}"
+
+    bam_file_to_use =  GENERAL_PATH + "{ech}/mutant_swarm_composition/sorted_alignment_on_consensus.bam"
+
+
+# Visualize the coverage_depth using a R script.
+rule visual_coverage3:
+    input:
+        cov    = GENERAL_PATH + "{ech}/Results/{ech}_coverage_each_position",
+        script = PATH + R_SCRIPTS + "visualize_coverage_depth.R"
+    output:
+        GENERAL_PATH + "{ech}/Results/{ech}_coverage_viral_reads_on_consensus.png"
+    conda:
+        CONDA_PATH + "r-env.yalm"
+    shell:
+        "R --vanilla --args {input.cov} {output} < {input.script}"
+
+
+# The variant calling step can be performed. We gather the previously created
+# bamfile with the last json file and the consensus sequence.
+# Then Vardirct is launched.
+# Let's note important things:
+    # -first, vardict-java is used and not the first_perl version of vardict,
+        # because this version do not output misunderstood line as such as
+        # 'Use of uninitialized value in ...' that could come out when using the
+        # with the perl version of Vardict
+    # -two, in the vardict_test environment, the perl version of vardict is also
+        # installed, because scripts like teststrandbias.R or var2vcf_valid.pl
+        # were not present in the vardict-java package. Only the java version of
+        # vardict is used, not the perl one.
+    # -three, in former version of teststrandbias.R script, it was necessary to
+        # manually modify the script according to recommendation from
+        # PolinaBevad. Therefore you might have need to change the number '34'
+        # into '36'. Details are done to this url:
+        # https://github.com/AstraZeneca-NGS/VarDict/issues/83
+    # -four, the value of allele frequency has been set to 1% by default.
+        # We choose to not modify this parameter in order to get all possible
+        # variants, even if some of them are false. Later in the snakefile,
+        # we set a threshold value to conclude on the results, but right now,
+        # we do not exclude any potential variants.
+
+rule Variant_Calling:
+    input:
+        bam  = bam_file_to_use,
+        cons = GENERAL_PATH + "{ech}/mutant_swarm_composition/viral_consensus_renamed.fasta", 
+        bed  = GENERAL_PATH + "{ech}/mutant_swarm_composition/gene_position_viral_consensus.bed"
+    output:
+        GENERAL_PATH + "{ech}/Results/{ech}_variant_calling.vcf"
+    threads: thrds
+    conda:
+        CONDA_PATH + "vardict_test.yalm"
+    shell:# option k => perform local realignment, set to 0 for Ion and PacBio, set to 1 for Illumina, see https://github.com/AstraZeneca-NGS/VarDictJava/issues/279
+        "vardict-java -G {input.cons} -th {threads} -k "+ vardict_option +" -Q 5 -q 0 -N aligned_{wildcards.ech} -b {input.bam} -f 0.01 -c 1 -S 2 -E 3 -g 4 {input.bed} | teststrandbias.R | var2vcf_valid.pl -f 0.01 -N aligned_{wildcards.ech} -E > {output}"
+#-q 22.5
+
+# The next rule will generate a new file containing the position of non variable
+# AND variable nucleotides in the viral population.
+# This file will then be used to generate the final graphic to represent
+# visually the variant population.
+rule convert_vcf:
+    input:
+#        ref       = GENERAL_PATH + "{ech}/Results/{ech}_viral_consensus.fasta", 
+        vcf       = GENERAL_PATH + "{ech}/Results/{ech}_variant_calling.vcf",
+        json_file = GENERAL_PATH + "{ech}/mutant_swarm_composition/gene_position_viral_consensus.json",
+#        script2  = PATH + PYTHON_SCRIPTS + "compare_cds.py",
+        script    = PATH + PYTHON_SCRIPTS + "convert_vcffile_to_readablefile.py"
+    output:
+        GENERAL_PATH + "{ech}/Results/{ech}_snp_location"
+    shell:
+        "python3 {input.script} --vcfs {input.vcf} --json {input.json_file} --out {output} --threshold " + threshold
+#        "python3 {input.script2} --geneposition {input.json} --variant {output}_summary --sequence {input.ref}"
+
+
+# Finally, a graphic displaying the possible variant in the viral population is
+# generated, using a R script and the ggplot2 package.
+# A threshold line is added to the script with the value that has been
+# previously determined.
+rule visualize_SNP:
+    input:
+        filin  = GENERAL_PATH + "{ech}/Results/{ech}_snp_location",
+        script = PATH + R_SCRIPTS + "visualize_snp_v4.R"
+    output:
+        GENERAL_PATH + "{ech}/Results/{ech}_graphic_variant.png",
+    conda:
+        CONDA_PATH + "r-env.yalm"
+    shell:
+        "R --vanilla --args {input.filin} "+threshold+" {output} < {input.script}"
+
+# ~ end of snakefile ~
