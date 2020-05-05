@@ -1,4 +1,4 @@
-cd ~/vdb/viral_genbank_files.ori/
+cd ../vdb/viral_genbank_files/
 pwd
 for i in `seq 0 9`
 do
