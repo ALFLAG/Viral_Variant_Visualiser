@@ -69,6 +69,8 @@ CONDA_PATH = PATH + "ENVS/"
 VDB_PATH = PATH + "vdb/megablast_index/vdb.fasta"
 VDB_IDS = PATH + "vdb/megablast_index/vdb_ids"
 GB_PATH = PATH + "vdb/viral_gbk_files/"
+ANSES_NT_DIR="/results/anses/db/nt_db/"
+BLASTDB="/results/anses/db/nt_db/"
 taxonomy_path = "/results/anses/db/tax_krona/"
 
 # locate the configuration file for the succes of this workflow
@@ -299,7 +301,7 @@ rule get_org1:
     # the sequencer option is for bowtie2 only: Illumina by default
     # every other strings are supposed to be illumina,
     # only tstrings present in the list are recognized, see man page
-        "ANSES_NT_DIR='/results/anses/db/nt_db/' && "\
+        "ANSES_NT_DIR='"+ANSES_NT_DIR+"' && "\
         "/usr/bin/perl {input.script} -nb_threads {threads} -db_str "+metaDB+ " " \
         "-reads_f {input.subsample} -id first_getorg "\
         "-res_dir " + GENERAL_PATH + "{wildcards.ech}/result_get_org/ "\
@@ -657,7 +659,7 @@ if generate_consensus == True:
             CONDA_PATH + "megablast.yalm"
         shell:
             "python3 {input.script} --contigs {input.contig_spades} --outfile {output.feed_mega} --size_limit 1000 && "\
-            "ANSES_NT_DIR='/results/anses/db/nt_db/' && BLASTDB='/results/anses/db/nt_db/' && "\
+            "ANSES_NT_DIR='"+ANSES_NT_DIR+"' && BLASTDB='"+BLASTDB+"' && "\
             "megablast -d "+metaDB+" -i {output.feed_mega} > {output.mega_spades}"
 #            "blastn -task megablast -db " + metaDB + " -query {output.feed_mega} > {output.mega_spades}"
     
@@ -675,7 +677,7 @@ if generate_consensus == True:
         shell:
             "touch {input.log_file} && "\
             "python3 {input.script} --contigs {input.contig_mira}"+PROJECT[:-1]+"_assembly/"+PROJECT[:-1]+"_d_results/"+PROJECT[:-1]+"_out.unpadded.fasta --outfile {output.feed_mega} --size_limit 1000 && "\
-            "ANSES_NT_DIR='/results/anses/db/nt_db/' && BLASTDB='/results/anses/db/nt_db/' && "\
+            "ANSES_NT_DIR='"+ANSES_NT_DIR+"' && BLASTDB='"+BLASTDB+"' && "\
             "megablast -d "+metaDB+" -i {output.feed_mega} > {output.mega_mira}"
 #            "blastn -task megablast -db " + metaDB + " -query {output.feed_mega} > {output.mega_mira}"
     
@@ -696,7 +698,7 @@ if generate_consensus == True:
             CONDA_PATH + "megablast.yalm"
         shell:
             "python3 {input.script} -s {input.spades} -o {output.access_nber} -m {input.mira} && "\
-            "ANSES_NT_DIR='/results/anses/db/nt_db/' && BLASTDB='/results/anses/db/nt_db/' && "\
+            "ANSES_NT_DIR='"+ANSES_NT_DIR+"' && BLASTDB='"+BLASTDB+"' && "\
             "blastdbcmd -db "+metaDB+" -dbtype nucl -entry_batch {output.access_nber} -out {output.ref} -outfmt '%f'"
     
     
@@ -1022,7 +1024,7 @@ rule get_org2:
     # the sequencer option is for bowtie2 only: Illumina by default
     # every other strings are supposed to be illumina,
     # only tstrings present in the list are recognized, see man page
-        "ANSES_NT_DIR='/results/anses/db/nt_db/' && "\
+        "ANSES_NT_DIR='"+ANSES_NT_DIR+"' && "\
         "/usr/bin/perl {input.script} -nb_threads {threads} -db_str "+metaDB+" "\
         "-reads_f {input.subsample} -id remove_host_getorg "\
         "-res_dir " + GENERAL_PATH + "{wildcards.ech}/mutant_swarm_composition "\
@@ -1047,7 +1049,7 @@ rule get_host_seq_on_local_database:
     conda:
         CONDA_PATH + "megablast.yalm"
     shell:
-        "ANSES_NT_DIR='/results/anses/db/nt_db/' && BLASTDB='/results/anses/db/nt_db/' && "\
+        "ANSES_NT_DIR='"+ANSES_NT_DIR+"' && BLASTDB='"+BLASTDB+"' && "\
         "blastdbcmd -db "+metaDB+" -dbtype nucl -entry_batch {input} -out {output} -outfmt '%f'"
 
 
