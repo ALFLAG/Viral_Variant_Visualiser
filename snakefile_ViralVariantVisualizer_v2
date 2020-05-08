@@ -69,6 +69,7 @@ CONDA_PATH = PATH + "ENVS/"
 VDB_PATH = PATH + "vdb/megablast_index/vdb.fasta"
 VDB_IDS = PATH + "vdb/megablast_index/vdb_ids"
 GB_PATH = PATH + "vdb/viral_gbk_files/"
+taxonomy_path = "/results/anses/db/tax_krona/"
 
 # locate the configuration file for the succes of this workflow
 configfile : PATH + "configuration_file.json"
@@ -135,14 +136,14 @@ for i in range(0, len(ech_list)):
 
         if os.path.exists(path1): pass                                                                 
         else:                                                                    
-            os.system("mv " + raw_reads[i][0] + " " + path1)                     
-            os.system("mv " + raw_reads[i][1] + " " + path2)                     
+            os.system("cp " + raw_reads[i][0] + " " + path1)                     
+            os.system("cp " + raw_reads[i][1] + " " + path2)                     
 
     elif single_end == True:                                                     
         path3 = GENERAL_PATH + samp + "/Results/" + samp + "_raw_reads.fastq.gz"
         
         if os.path.exists(path3): pass                                                                 
-        else: os.system("mv " + raw_reads[i] + " " + path3)                        
+        else: os.system("cp " + raw_reads[i] + " " + path3)                        
         
 
 ################
@@ -298,6 +299,7 @@ rule get_org1:
     # the sequencer option is for bowtie2 only: Illumina by default
     # every other strings are supposed to be illumina,
     # only tstrings present in the list are recognized, see man page
+        "ANSES_NT_DIR='/results/anses/db/nt_db/' && "\
         "/usr/bin/perl {input.script} -nb_threads {threads} -db_str "+metaDB+ " " \
         "-reads_f {input.subsample} -id first_getorg "\
         "-res_dir " + GENERAL_PATH + "{wildcards.ech}/result_get_org/ "\
@@ -314,7 +316,7 @@ rule get_krona_chart:
     conda:
         CONDA_PATH + "krona.yalm"
     shell:
-        "ktImportBLAST -o {output} {input}"
+        "ktImportBLAST -tax " + taxonomy_path +" -o {output} {input}"
 
 rule relocate_krona_chart:
     input:
@@ -379,7 +381,7 @@ if generate_consensus == True:
         input:
             fastq     = GENERAL_PATH + "{ech}/clean_reads.fastq",
             vdb_match = GENERAL_PATH + "{ech}/partial_read_files/all_vdb_match",
-            script    = PYTHON_SCRIPTS + "filter_matching_reads.py"
+            script    = PATH + PYTHON_SCRIPTS + "filter_matching_reads.py"
         output:
             GENERAL_PATH + "{ech}/all_viral_reads.fastq"
         shell:
@@ -446,7 +448,7 @@ if generate_consensus == True:
         output:
            GENERAL_PATH + "{ech}/most_represented_viral_ref.fasta"
         shell:
-            "python3 {input.script} /home/aflageul/vdb/viral_gbk_files/`cat {input.most}`.gbk {output}"
+            "python3 {input.script} " + GB_PATH +"`cat {input.most}`.gbk {output}"
     
     
     ################################################################################
@@ -655,7 +657,9 @@ if generate_consensus == True:
             CONDA_PATH + "megablast.yalm"
         shell:
             "python3 {input.script} --contigs {input.contig_spades} --outfile {output.feed_mega} --size_limit 1000 && "\
+            "ANSES_NT_DIR='/results/anses/db/nt_db/' && BLASTDB='/results/anses/db/nt_db/' && "\
             "megablast -d "+metaDB+" -i {output.feed_mega} > {output.mega_spades}"
+#            "blastn -task megablast -db " + metaDB + " -query {output.feed_mega} > {output.mega_spades}"
     
     
     rule MEGABLAST_for_mira:
@@ -671,7 +675,9 @@ if generate_consensus == True:
         shell:
             "touch {input.log_file} && "\
             "python3 {input.script} --contigs {input.contig_mira}"+PROJECT[:-1]+"_assembly/"+PROJECT[:-1]+"_d_results/"+PROJECT[:-1]+"_out.unpadded.fasta --outfile {output.feed_mega} --size_limit 1000 && "\
+            "ANSES_NT_DIR='/results/anses/db/nt_db/' && BLASTDB='/results/anses/db/nt_db/' && "\
             "megablast -d "+metaDB+" -i {output.feed_mega} > {output.mega_mira}"
+#            "blastn -task megablast -db " + metaDB + " -query {output.feed_mega} > {output.mega_mira}"
     
     
     # The reference must be carefully chosen, because the consensus creation depend
@@ -690,6 +696,7 @@ if generate_consensus == True:
             CONDA_PATH + "megablast.yalm"
         shell:
             "python3 {input.script} -s {input.spades} -o {output.access_nber} -m {input.mira} && "\
+            "ANSES_NT_DIR='/results/anses/db/nt_db/' && BLASTDB='/results/anses/db/nt_db/' && "\
             "blastdbcmd -db "+metaDB+" -dbtype nucl -entry_batch {output.access_nber} -out {output.ref} -outfmt '%f'"
     
     
@@ -1015,6 +1022,7 @@ rule get_org2:
     # the sequencer option is for bowtie2 only: Illumina by default
     # every other strings are supposed to be illumina,
     # only tstrings present in the list are recognized, see man page
+        "ANSES_NT_DIR='/results/anses/db/nt_db/' && "\
         "/usr/bin/perl {input.script} -nb_threads {threads} -db_str "+metaDB+" "\
         "-reads_f {input.subsample} -id remove_host_getorg "\
         "-res_dir " + GENERAL_PATH + "{wildcards.ech}/mutant_swarm_composition "\
@@ -1039,6 +1047,7 @@ rule get_host_seq_on_local_database:
     conda:
         CONDA_PATH + "megablast.yalm"
     shell:
+        "ANSES_NT_DIR='/results/anses/db/nt_db/' && BLASTDB='/results/anses/db/nt_db/' && "\
         "blastdbcmd -db "+metaDB+" -dbtype nucl -entry_batch {input} -out {output} -outfmt '%f'"
 
 
@@ -1210,7 +1219,7 @@ rule Variant_Calling:
     conda:
         CONDA_PATH + "vardict_test.yalm"
     shell:# option k => perform local realignment, set to 0 for Ion and PacBio, set to 1 for Illumina, see https://github.com/AstraZeneca-NGS/VarDictJava/issues/279
-        "vardict-java -G {input.cons} -th {threads} -k "+ vardict_option +" -Q 5 -q 0 -N aligned_{wildcards.ech} -b {input.bam} -f 0.01 -c 1 -S 2 -E 3 -g 4 {input.bed} | teststrandbias.R | var2vcf_valid.pl -f 0.01 -N aligned_{wildcards.ech} -E > {output}"
+        "vardict-java -G {input.cons} -th {threads} -k "+ vardict_option +" -Q 5 -q 22.5 -N aligned_{wildcards.ech} -b {input.bam} -f 0.01 -c 1 -S 2 -E 3 -g 4 {input.bed} | teststrandbias.R | var2vcf_valid.pl -f 0.01 -N aligned_{wildcards.ech} -E > {output}"
 #-q 22.5
 
 # The next rule will generate a new file containing the position of non variable
