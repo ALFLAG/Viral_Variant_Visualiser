@@ -17,18 +17,18 @@
     <command><![CDATA[
         python3 $__tool_directory__/viral_variant_visualiser.py
         -s '$sample' --mail '$mail' --db nt --remove_duplicate '$remove_duplicate.value' --threshold '$threshold' --project '$project' 
-        #if '$data.datatype.data' == "se":
-            -i '$data.fastq' 
+        #if $data.datatype.data == 'se':
+            --data se -i '$data.fastq' 
         #else
-            -i '$data.fastq1','$data.fastq2' 
+            --data pe -i '$data.fastq1','$data.fastq2' 
         #end if
-        #if $consensus.generate_consensus == "yes"
+        #if $consensus.generate_consensus == 'yes'
             --generate_consensus yes 
         #else
-            --generate_consensus no --consensus_file '${consensus.consensus_file}' 
+            --generate_consensus no --consensus_file '$consensus.consensus_file' 
         #end if
 
-        && cd /home/aflageul/GAKA/ME/ANALYSIS/'$project'/'$sample'/ && mv Results/ '$sample'_results
+        && cd /home/aflageul/GALAXY/ME/ANALYSIS/'$project'/'$sample'/ && mv Results/ '$sample'_results
         && tar -zcvf archive.tar.gz '$sample'_results/
         &&
         #if $consensus.generate_consensus == 'yes':
