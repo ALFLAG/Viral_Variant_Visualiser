@@ -1,8 +1,8 @@
 #! /usr/bin/env bash
-# launch this script in the vvv_directory/SCRIPTS_VDB/scripts/ folder
+# launch this script in the vvv_directory/SCRIPTS_VDB/ directory
 
-mkdir ../SCRIPTS_VDB/megablast_index/
-mkdir ../SCRIPTS_VDB/viral_gbk_files/ && cd ../SCRIPTS_VDB/viral_gbk_files
+mkdir ../VDB/megablast_index/
+mkdir ../VDB/viral_gbk_files/ && cd ../VDB/viral_gbk_files
 
 # update the refseq in genbank format
 mkdir refseq && cd refseq
@@ -48,7 +48,7 @@ cd ../
 
 mv viral_gbk_files/all_seq.fasta megablast_index/vdb.fasta && cd megablast_index/
 
-# pour indexer la base de données 
+# to index database 
 source activate megablast
 makeblastdb -in vdb.fasta -dbtype nucl
 conda deactivate
