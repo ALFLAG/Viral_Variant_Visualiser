@@ -4,7 +4,7 @@
 <!--
     By default, the nt database is used to determine the metagenomique composition of the sample and to remove chimerique reads.
     To modify this database, uncomment the corresponding line at the end of this file, and adjust the command line.
-    NB: a Megablast index is used by VVV, based on VRL files from Genbank. If you want to modify this db, then modify the snakefile.
+    Additionnaly a Megablast index is used by VVV, based on VRL files from Genbank. If you want to modify this db, then modify the snakefile.
 
 -->
 
