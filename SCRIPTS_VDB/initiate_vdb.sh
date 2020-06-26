@@ -1,8 +1,8 @@
 #! /usr/bin/env bash
-# launch this script in the ~/vdb/scripts/ folder
+# launch this script in the vvv_directory/SCRIPTS_VDB/scripts/ folder
 
-mkdir ../vdb/megablast_index/
-mkdir ../vdb/viral_gbk_files/ && cd ../vdb/viral_gbk_files
+mkdir ../SCRIPTS_VDB/megablast_index/
+mkdir ../SCRIPTS_VDB/viral_gbk_files/ && cd ../SCRIPTS_VDB/viral_gbk_files
 
 # update the refseq in genbank format
 mkdir refseq && cd refseq
