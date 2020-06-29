@@ -166,8 +166,6 @@ elif args.generate_consensus == "no":
                  'CONSENSUS_FILE'     :consensus,
                  'GENERATE_CONSENSUS' :"no"
     }
-# generatethe consensus full path
-
 
 
 ## create the config file to use ##
@@ -176,29 +174,6 @@ config_file = "/home/aflageul/GALAXY/ME/configuration_file.json"
 filout = open(config_file, "w", encoding = "utf-8")
 json.dump(json_dico, filout, ensure_ascii = False)
 filout.close()
-
-
-## create the config_file record ##
-date = str(datetime.datetime.now())[0:10]
-record_name = "{0}_{1}_{2}_configuration_file.json".format(
-    ",".join(sample_list), args.project, date)
-path = "/home/aflageul/GALAXY/ME/records_config_files/"
-
-record = open(path + record_name, "w", encoding = "utf-8")
-json.dump(json_dico, record, ensure_ascii = False)
-record.close()
-
-
-## path to report ##
-
-user_name = ""
-for letter in args.mail:
-    if letter == "@": break
-    elif letter == ".": user_name = user_name + "-"
-    else: user_name = user_name + letter
-
-report_path = "/home/aflageul/GALAXY/ME/REPORTS/{0}_{1}_{2}.html".format(
-    user_name, ",".join(sample_list), date)
 
 
 ## write emails
