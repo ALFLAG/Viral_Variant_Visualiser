@@ -2,10 +2,9 @@
 # -*- coding: utf-8 -*-
 #
 # Alexandre Flageul
-# Name: snakefile_snp_consensus
+# Name: snakefile_ViralVariantVisualiser
 # Version: 1.0.0
-# last modification: February 17th 2018
-# status: over
+# last modification: May, 2020
 #
 #
 # Description : The present file is a workflow designed to analyze raw data
@@ -32,18 +31,6 @@
 #               All tools used in this workflow have been installed using Conda.
 #               Each tool is stored in a specific environment, so that to use
 #               them it is necessary to activate the different environments.
-#               The present Snakefile is destined to be used by anyone, using a
-#               gaphical interface after the PhD student has left the agency.
-#
-# How to use it:
-#               The present snakefile can be launched manually or automatically
-#               (recommanded) by using the 'launch_Me.py' script.
-#               Manually, you will have to fill in the configuration file but
-#               beware to not miswrite it, and you will need to activate the
-#               'snakes' environment first.
-#               From it, all others environments are activated. Therefore,
-#               Snakemake can be used in all activated environments, provided
-#               that the snakes environment has been activated first.
 #
 ################################################################################
 
