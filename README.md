@@ -12,5 +12,5 @@ This tool requieres snakemake 5.10 installed in a conda environment named ```sna
 This tool requieres the configuration of a megablast database to determine the metagenomic composition of the sample (nt database from NCBI for example, or RefSeq). And then, modify the BLASTDB and ANSES_NT_DIR variable to the database you used.
 This tool requieres the configuration of a custom database using the files of the VRL section of GenBank (viral sequences, naturally found in nature, no synthetic sequence). To do that, launch the script ```vvv_directory/SCRIPTS_VDB/initiate_vdb.sh``` in the ```vvv_directory/SCRIPTS_VDB/``` after activating the ```snakes_update``` environment.  
 
-When you use this tool, please cite:
+When you use this tool, please cite:  
 A.Flageul, P.Lucas, E.Hirchaud, F.Touzain, Y.Blanchard, N.Eterradossi, P.Brown, B.Grasland, 2020, Viral Variant Visualizer - A novel bioinformatic tool to quickly and simply visualize viral genetic diversity from next generation sequencing raw data, Virus Research
