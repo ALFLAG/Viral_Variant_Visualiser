@@ -4,7 +4,7 @@ from single-ends or paired-end NGS data, it allows the recontruction of the most
 
 
 This tool can be launch in two ways:     
-    . command line: ```python3 vvv_directory/SCRIPTS_PYTHON/viral_variant_visualiser.py``` # with all the requiered argument, see the help section  
+    . command line: ```python3 vvv_directory/SCRIPTS_PYTHON/viral_variant_visualiser.py``` # with all the requiered argument, see the help section. In that case, make sure you comment lines 133, 139, 141 and uncomment lines 134, 140, 142.   
     . via GALAXY: the file ```viral_variant_visualiser.xml``` can be added to a GALAXY instance together with the ```vvv_directory/SCRIPTS_PYTHON/viral_variant_visualiser.py``` script. In this case, make sure you update the command section of the xml file, with the correct path to the script, and the correct path to ```vvv_directory/```
 
 
