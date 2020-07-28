@@ -130,13 +130,16 @@ Please, read the help section above""")
 line_list = []
 if data.upper() == "SE":
     for i in range(0, len(rf_list)):
-        line = "/home/aflageul/raw_data/"+args.project+"/"+str(rf_list[i])
+        #line = "/home/aflageul/raw_data/"+args.project+"/"+str(rf_list[i])
+        line = str(rf_list[i])
         line_list.append(line)
 elif data.upper() == "PE":
     for i in range(0,len(rf_list)-1,2):
         sub_list = []
-        line1 = "/home/aflageul/raw_data/"+args.project+"/"+str(rf_list[i])
-        line2 = "/home/aflageul/raw_data/"+args.project+"/"+str(rf_list[i+1])
+        #line1 = "/home/aflageul/raw_data/"+args.project+"/"+str(rf_list[i])
+        line1 = str(rf_list[i])      
+        #line2 = "/home/aflageul/raw_data/"+args.project+"/"+str(rf_list[i+1])
+        line2 = str(rf_list[i+1])
         sub_list.append(line1)
         sub_list.append(line2)
         line_list.append(sub_list)
